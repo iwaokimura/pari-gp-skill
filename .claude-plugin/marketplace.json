@@ -1,0 +1,21 @@
+{
+  "name": "pari-gp-skill",
+  "owner": {
+    "name": "Iwao Kimura"
+  },
+  "metadata": {
+    "description": "A Claude Code skill of recurring PARI/GP scripting pitfalls",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "pari-gp",
+      "description": "PARI/GP scripting pitfalls: script-file { } block rules, subst vs substvec, ffgen semantics, my()/closures, vecsum type trap, exactness leaks, and the Write-tool file-creation convention",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./pari-gp"
+      ]
+    }
+  ]
+}
