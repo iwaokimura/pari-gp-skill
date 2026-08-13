@@ -21,6 +21,13 @@ re-check it when a script's output looks wrong but produces no error.
 Interactive `gp` and script files parse multi-line constructs differently.
 In a script **file**, all of the following are real, repeat-offender traps:
 
+- **House style: always write `funcname(args) = { ...; return(retval); }`.**
+  Put the `{` immediately after `=`, end the body with an explicit
+  `return(...)`, and close with `};`. GP also accepts wrapping the entire
+  `name(args) = ...` statement in an outer `{ }` (brace *before* the name)
+  and relying on the last bare expression as an implicit return — both
+  parse correctly — but this project sticks to the one form above so
+  there is nothing to double-check later.
 - **Any multi-line construct needs explicit `{ }`.** `for(...)`, `if(...)`,
   a multi-line function body, or a multi-line vector/statement list — without
   `{ }` wrapping the whole thing, gp silently takes only the *first physical
