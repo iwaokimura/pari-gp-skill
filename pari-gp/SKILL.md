@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, a `vecsum` type trap, floating-point leaking into exact computations -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function (which kills the run silently), `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, floating-point leaking into exact computations -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -28,6 +28,19 @@ re-check it when a script's output looks wrong but produces no error.
   `gp2c` (the GP-to-C transpiler), `main` is a reserved C symbol and will
   fail to compile/link. `run()` was verified clash-free — compiled, linked,
   loaded, and called successfully via `gp2c` end to end.
+
+## Stack size
+
+- **Set `parisize` at top level, never inside a function.**
+  `default(parisize, ...)` reallocates the PARI stack, and the reallocation
+  *aborts the computation in progress*. At top level that costs only the one
+  statement; inside the driver function it kills the entire run — the
+  stack-size warning prints, nothing else does, and the exit code is `0`, so
+  it looks exactly like a script that silently produced no output. Verified
+  twice, in two different scripts, in one session.
+  **This interacts badly with the house style above**: once every statement
+  lives inside `run()`, `default(parisize, ...)` is the one line that must
+  stay outside it.
 
 ## Block syntax in script files (not the interactive REPL)
 
@@ -81,6 +94,16 @@ In a script **file**, all of the following are real, repeat-offender traps:
   `znprimroot` for the prime case, or search among nonzero elements checking
   the order), or enumerate by digits over a fixed basis instead of by powers
   of `ffgen`'s output.
+- **`for` has no step argument.** `for(i = 6, 0, -1, ...)` is not a descending
+  loop — the third argument is the body, so this is a syntax error at best and
+  a silently wrong loop at worst. Use `forstep(i = 6, 0, -1, ...)`.
+- **Variable priority is enforced, and the number field's variable must have
+  the *lower* priority.** `nffactor`, `polrootsmod` and friends reject a
+  polynomial whose variable does not outrank the field's: define the field by
+  `y^3 - 2` and factor polynomials in `x`, not the other way round. Symptom:
+  `incorrect priority in nffactor: variable t >= a`. Priority follows creation
+  order, so a field defined with a variable you introduced earlier in the
+  session will fail for no visible reason.
 
 ## Reading return values
 

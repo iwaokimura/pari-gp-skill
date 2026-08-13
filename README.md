@@ -2,9 +2,10 @@
 
 A [Claude Code skill](https://support.claude.com/en/articles/12512176-what-are-skills)
 of recurring PARI/GP scripting pitfalls: `.gp` script-file parsing rules that
-don't apply in the interactive REPL, semantic traps (`subst` vs `substvec`,
-`ffgen`, `my()`/closures), a `vecsum` type trap, and a place where exactness
-silently leaks into floating point. Also documents the Claude Code convention
+don't apply in the interactive REPL, a stack-size setting that silently kills a
+whole run when placed inside a function, semantic traps (`subst` vs `substvec`,
+`ffgen`, `my()`/closures, variable priority in `nffactor`), a `vecsum` type
+trap, and a place where exactness silently leaks into floating point. Also documents the Claude Code convention
 of creating `.gp` files with the Write tool rather than shell heredoc.
 
 Every item here was hit more than once, in independent sessions, while
