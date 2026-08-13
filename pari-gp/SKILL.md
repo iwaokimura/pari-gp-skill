@@ -118,3 +118,26 @@ In a script **file**, all of the following are real, repeat-offender traps:
 
 - Scripts are normally run as `gp -q script.gp` (quiet mode, suppresses the
   startup banner).
+- **`gp -q script.gp` can hang forever with no error if stdin isn't
+  closed.** After the script finishes, gp drops to an interactive prompt
+  and waits for more input. For any non-interactive or backgrounded
+  invocation, close stdin explicitly: `gp -q script.gp < /dev/null`.
+
+## Monitoring long-running jobs
+
+- **Never pipe a long-running job directly into `tail`.** `cmd | tail -n
+  20` shows *nothing* until `cmd` closes its stdout — i.e. until it
+  finishes — because `tail` must see the end of the stream to know what
+  "the last N lines" are. Verified: a script piped through `tail`
+  produced zero bytes of output for its entire ~26s run, then dumped
+  everything at once at exit — indistinguishable from a hung process.
+  **Redirect to a file instead** (`gp -q script.gp > run.log 2>&1 </
+  dev/null`) and watch the file (`tail -f run.log`, or just re-read it).
+  This works: gp flushes each `print`/`printf` immediately even when
+  stdout is not a terminal (verified — output appeared in the log file
+  within ~2s of being printed, no block-buffering on gp's side).
+- **This is a `tail` problem, not (for gp) a buffering problem — but
+  SageMath is different.** Python's stdout *does* fully block-buffer when
+  redirected to a file or pipe, so a killed job can lose everything
+  printed so far. For Sage, additionally call `sys.stdout.flush()` after
+  each print, or launch with `sage -python -u` / `PYTHONUNBUFFERED=1`.
