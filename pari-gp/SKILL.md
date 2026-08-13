@@ -20,10 +20,14 @@ re-check it when a script's output looks wrong but produces no error.
 
 - **Wrap all processing inside functions; nothing free-floating at the top
   level.** Give each piece of functionality its own function, write a
-  driver function `main()` that calls them in the right order, and put a
-  single `main();` as the file's last line. Every variable is
+  driver function `run()` that calls them in the right order, and put a
+  single `run();` as the file's last line. Every variable is
   `my()`-declared inside some function — no bare top-level assignments
   living outside a function body.
+  **Don't name the driver `main()`**: if this script is ever run through
+  `gp2c` (the GP-to-C transpiler), `main` is a reserved C symbol and will
+  fail to compile/link. `run()` was verified clash-free — compiled, linked,
+  loaded, and called successfully via `gp2c` end to end.
 
 ## Block syntax in script files (not the interactive REPL)
 
