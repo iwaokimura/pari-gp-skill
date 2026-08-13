@@ -140,4 +140,9 @@ In a script **file**, all of the following are real, repeat-offender traps:
   SageMath is different.** Python's stdout *does* fully block-buffer when
   redirected to a file or pipe, so a killed job can lose everything
   printed so far. For Sage, additionally call `sys.stdout.flush()` after
-  each print, or launch with `sage -python -u` / `PYTHONUNBUFFERED=1`.
+  each print, or launch with `PYTHONUNBUFFERED=1 sage script.sage`
+  (verified: iterations of a test script appeared in the log every ~4s
+  instead of all at once at exit). **Do not use `sage -python`/`--python`
+  for this** — that runs the bare Python 3 interpreter bundled with Sage,
+  without `sage.all` imported or the Sage preparser applied, so any actual
+  Sage code (`EllipticCurve(...)`, etc.) fails with `NameError` (verified).
