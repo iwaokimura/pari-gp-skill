@@ -16,6 +16,15 @@ re-check it when a script's output looks wrong but produces no error.
   vanishing entirely). If a shell redirect is unavoidable, diff the written
   file against the intended content before running it.
 
+## Script structure
+
+- **Wrap all processing inside functions; nothing free-floating at the top
+  level.** Give each piece of functionality its own function, write a
+  driver function `main()` that calls them in the right order, and put a
+  single `main();` as the file's last line. Every variable is
+  `my()`-declared inside some function — no bare top-level assignments
+  living outside a function body.
+
 ## Block syntax in script files (not the interactive REPL)
 
 Interactive `gp` and script files parse multi-line constructs differently.
