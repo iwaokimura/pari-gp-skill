@@ -136,13 +136,7 @@ In a script **file**, all of the following are real, repeat-offender traps:
   This works: gp flushes each `print`/`printf` immediately even when
   stdout is not a terminal (verified — output appeared in the log file
   within ~2s of being printed, no block-buffering on gp's side).
-- **This is a `tail` problem, not (for gp) a buffering problem — but
-  SageMath is different.** Python's stdout *does* fully block-buffer when
-  redirected to a file or pipe, so a killed job can lose everything
-  printed so far. For Sage, additionally call `sys.stdout.flush()` after
-  each print, or launch with `PYTHONUNBUFFERED=1 sage script.sage`
-  (verified: iterations of a test script appeared in the log every ~4s
-  instead of all at once at exit). **Do not use `sage -python`/`--python`
-  for this** — that runs the bare Python 3 interpreter bundled with Sage,
-  without `sage.all` imported or the Sage preparser applied, so any actual
-  Sage code (`EllipticCurve(...)`, etc.) fails with `NameError` (verified).
+- **This is a `tail` problem, not a gp buffering problem** — gp's own
+  output is not block-buffered when redirected, so the fix above is
+  sufficient for gp. (SageMath has a related but different, genuinely
+  Python-specific issue — see the separate `sagemath` skill.)
