@@ -62,6 +62,20 @@ In a script **file**, all of the following are real, repeat-offender traps:
   the order), or enumerate by digits over a fixed basis instead of by powers
   of `ffgen`'s output.
 
+## Reading return values
+
+- **Don't guess a compound return value's component order — look it up.**
+  `?funcname` prints a one-line summary from the shell; `??funcname` prints
+  the full manual entry with a worked example, non-interactively:
+  `echo "??elltors" | gp -q`.
+- **Concrete case that actually bit us**: `elltors(E)` returns `[t, v1, v2]`
+  — `t` (component `[1]`) is the torsion group's **order**, `v1`
+  (component `[2]`) is its **structure** as a product of cyclic groups.
+  Reading `elltors(E)[1]` as "the structure" reported $\Z/4$ where the
+  group was actually $(\Z/2)^2$ — both have order 4, which is why the bug
+  wasn't obvious — and a later enumeration over the group silently ran
+  over only half its elements.
+
 ## Type traps
 
 - **`vecsum` rejects `t_VECSMALL`.** Wrap the argument in `Vec(...)` first
