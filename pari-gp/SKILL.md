@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function (which kills the run silently), `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and syntax errors that make gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function (which kills the run silently), `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -153,28 +153,36 @@ In a script **file**, all of the following are real, repeat-offender traps:
   closed.** After the script finishes, gp drops to an interactive prompt
   and waits for more input. For any non-interactive or backgrounded
   invocation, close stdin explicitly: `gp -q script.gp < /dev/null`.
-- **A syntax error anywhere in the file makes gp skip the whole file and
-  still exit 0.** It prints `*** syntax error ...` followed by
-  `... skipping file 'x.gp'`; with the house style above (one `run();` on the
-  last line) a `*** not a function in function call` follows, because the
-  driver was never defined. Nothing runs, and **the exit status is 0**. So the
-  exit code alone cannot tell "every gate passed" from "the file never ran" —
-  a runner must *also* require the gate line in the output. (This is the same
-  shape as the `parisize` trap above, but general: any syntax error does it.)
-  gp does not print a line number either.
-- **Lint with `gp2c` first — it exits 1 and gives the line number.** Measured
-  on the same broken file: `gp -q syn.gp` printed the error and exited `0`;
-  `gp2c syn.gp` printed `syn.gp:2: syntax error, unexpected '~'` and exited
-  `1`. Run it as a pre-flight check, and note that it only reads the file:
+- **ANY error aborts the script and gp still exits 0** — syntax, arity and
+  runtime errors alike. gp prints the error, then `... skipping file 'x.gp'`,
+  and stops; with the house style above (one `run();` on the last line) a
+  syntax error additionally reports `*** not a function in function call`,
+  because the driver was never defined. **The exit status is 0 in every case.**
+  So the exit code alone cannot tell "every gate passed" from "the file died
+  halfway" — a runner must *also* require the gate line in the output. (Same
+  shape as the `parisize` trap above, but general.) gp prints no line number
+  either. Measured on four one-line scripts:
+
+  | the script contains | gp exit | `... skipping file` | `gp2c` |
+  |---|---|---|---|
+  | a syntax error, `~(1<<n)` | **0** | yes | exit 1, `syn.gp:2: syntax error, unexpected '~'` |
+  | an arity error, `f(1,2)` for a one-argument `f` | **0** | yes | exit 1, `Error:rt_arity.gp:4: Too many args for \`f'` |
+  | a type error, `0~` | **0** | yes | exit 0, **not caught** |
+  | a division by zero | **0** | yes | exit 0, **not caught** |
+
+- **Lint with `gp2c` first — it exits 1 with a line number for what it can see
+  statically.** That is the top two rows above: syntax and arity. The bottom
+  two, which need the values, still surface only at run time and still exit 0,
+  which is why the gate line has to be checked as well. Run the lint as a
+  pre-flight; it only reads the file:
   ```sh
-  gp2c script.gp > /dev/null || echo "syntax error"   # lint, exits 1 on error
-  gp -q script.gp < /dev/null                          # then run
+  gp2c script.gp > /dev/null || echo "does not compile"   # exits 1 on error
+  gp -q script.gp < /dev/null                             # then run
   ```
   It is conservative: on five working scripts from a real project it reported
   no errors. Two kinds of *warning* are normal and harmless: `function
   prototype is unknown <f>` for built-ins gp2c has not been taught (e.g.
-  `ellrank`), and `meta commands not implemented \q`. A type error such as
-  `0~` is *not* caught — that one is only found at runtime.
+  `ellrank`), and `meta commands not implemented \q`.
 - **Verify the failure path once.** Run a deliberately broken copy (flip one
   `check` to something false) and confirm the script exits non-zero. It is
   cheap, and it catches a mis-wired `quit(1)` or a gate that reports RED while
