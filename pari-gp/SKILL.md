@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function (which kills the run silently), `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), `bnfisprincipal` returning a placeholder generator with only a warning, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -41,6 +41,18 @@ re-check it when a script's output looks wrong but produces no error.
   **This interacts badly with the house style above**: once every statement
   lives inside `run()`, `default(parisize, ...)` is the one line that must
   stay outside it.
+- **The same trap in a new disguise: `default(parisize, ...)` at the top
+  level of a file that is itself loaded with `read("file.gp")` aborts the
+  `read`.** The "computation in progress" is the read, so the rest of the
+  file — every function definition and the final `run();` — is never seen.
+  Symptom identical to the above: the stack-size warning, then nothing, exit
+  code 0. Guard it so it is a no-op when the outer file has already set the
+  stack, and put the real setting in the outermost file:
+  ```
+  if(default(parisize) < 4000000000, default(parisize, 4000000000));
+  ```
+  (Bit us the first time a script was parametrised through a wrapper file —
+  see *Invocation* below.)
 
 ## Block syntax in script files (not the interactive REPL)
 
@@ -127,8 +139,27 @@ In a script **file**, all of the following are real, repeat-offender traps:
   wasn't obvious — and a later enumeration over the group silently ran
   over only half its elements.
 
+- **A PARI *warning* on stderr can mean a silently degraded return value.**
+  Concrete case: `bnfisprincipal(bnf, x)` (default `flag = 1`) returns
+  `[e, t]`, and when the generator `t` is too large for the current
+  precision it prints `*** bnfisprincipal: Warning: precision too low for
+  generators, not given` and returns the **placeholder `[]~`** in its place
+  — the call succeeds, `e` is correct, and a loop that consumes `t` (`if(e ==
+  0, use(t))`) silently drops that ideal. In a run that decided existence
+  questions this was a potential false negative on 48 of 9290 cases. Use
+  `flag = 3` (`nf_GEN | nf_FORCE`: raise the precision until the generator
+  exists), or `flag = 4` for a compact representation, and **count the
+  placeholders** (`type(t) != "t_COL" || t == 0*t`) so a drop is fatal rather
+  than silent. More generally: when a script redirects stderr to a file, read
+  that file before believing the stdout.
+
 ## Type traps
 
+- **`mathnf`, `matsnf` and `matkerint` want an *integer* matrix.** A
+  rational lattice basis (a fractional ideal, a colon ideal, `matid(4)/n`)
+  fails with `incorrect type in mathnf0 [integer matrix] (t_MAT)`. Scale by
+  the common denominator and divide back: `d = denominator(G);
+  mathnf(d*G)/d`. (`idealhnf`, by contrast, accepts rational ideals.)
 - **`vecsum` rejects `t_VECSMALL`.** Wrap the argument in `Vec(...)` first
   if it might be a `t_VECSMALL` (e.g. output of `vecextract`,
   `factor(...)[,2]`, or similar).
@@ -149,6 +180,20 @@ In a script **file**, all of the following are real, repeat-offender traps:
 
 - Scripts are normally run as `gp -q script.gp` (quiet mode, suppresses the
   startup banner).
+- **A `.gp` script has no command-line arguments; parametrise it with a
+  wrapper file.** For a Tier-1 subset, a doubled-scan gate, or any variant
+  run, write a two-line wrapper that sets globals and then `read()`s the
+  script, and let the script supply defaults for globals the wrapper did not
+  set — an unset name in gp is a *variable* (`t_POL`), not `0`, so test the
+  type:
+  ```
+  /* wrapper t1.gp */            /* in the script */
+  default(parisize, 4000000000); if(type(SCANMULT) != "t_INT", SCANMULT = 1);
+  SCANMULT = 2;                  if(type(PRIMES_OVERRIDE) == "t_VEC",
+  read("script.gp");                PRIMES = PRIMES_OVERRIDE);
+  ```
+  Remember the `read()` form of the parisize trap (*Stack size* above): the
+  wrapper owns the stack setting, the script only guards it.
 - **`gp -q script.gp` can hang forever with no error if stdin isn't
   closed.** After the script finishes, gp drops to an interactive prompt
   and waits for more input. For any non-interactive or backgrounded

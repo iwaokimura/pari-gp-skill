@@ -3,7 +3,9 @@
 A [Claude Code skill](https://support.claude.com/en/articles/12512176-what-are-skills)
 of recurring PARI/GP scripting pitfalls: `.gp` script-file parsing rules that
 don't apply in the interactive REPL, a stack-size setting that silently kills a
-whole run when placed inside a function, semantic traps (`subst` vs `substvec`,
+whole run when placed inside a function or inside a `read()` file, a
+`bnfisprincipal` placeholder generator that arrives with only a warning,
+semantic traps (`subst` vs `substvec`,
 `ffgen`, `my()`/closures, variable priority in `nffactor`), a `vecsum` type
 trap, `~` being transpose and not bitwise NOT, a place where exactness silently
 leaks into floating point, and errors of every kind -- syntax, arity, runtime --
