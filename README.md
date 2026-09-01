@@ -5,7 +5,9 @@ of recurring PARI/GP scripting pitfalls: `.gp` script-file parsing rules that
 don't apply in the interactive REPL, a stack-size setting that silently kills a
 whole run when placed inside a function, semantic traps (`subst` vs `substvec`,
 `ffgen`, `my()`/closures, variable priority in `nffactor`), a `vecsum` type
-trap, and a place where exactness silently leaks into floating point. Also documents the Claude Code convention
+trap, `~` being transpose and not bitwise NOT, a place where exactness silently
+leaks into floating point, and syntax errors that make gp skip the whole file
+and still exit 0 (with `gp2c` as the lint that catches them). Also documents the Claude Code convention
 of creating `.gp` files with the Write tool rather than shell heredoc.
 
 Every item here was hit more than once, in independent sessions, while
