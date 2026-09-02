@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), `bnfisprincipal` returning a placeholder generator with only a warning, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -124,6 +124,27 @@ In a script **file**, all of the following are real, repeat-offender traps:
   `incorrect priority in nffactor: variable t >= a`. Priority follows creation
   order, so a field defined with a variable you introduced earlier in the
   session will fail for no visible reason.
+
+- **`Map` and `List` arguments are passed BY VALUE, and mutating one inside a
+  function is silently lost.** `mapput`/`listput` on a parameter change only
+  the function's own copy; the caller's object is untouched and **no error, no
+  warning** is produced. Verified:
+
+  ```
+  f(M) = { mapput(M, "a", 1); return(#Mat(M)); };   /* inside: 2 (one key) */
+  g(L) = { listput(L, 7);     return(#L); };        /* inside: 1 entry     */
+  /* back in the caller: the Map has 0 keys and the List 0 entries */
+  ```
+
+  This is the opposite of the intuition carried over from Python (`dict`,
+  `list`) and from PARI's own C library, where `GEN` containers are handles.
+  It cost a whole per-type census in a real run: the row *totals* were right
+  because they were **return values**, while every per-type line came out
+  empty, and the script exited 0.
+  **Never accumulate into a `Map`/`List` received as an argument.** Either
+  return the counts up the call chain, or — usually simpler and more robust —
+  have the inner function `print` one line per object and do the aggregation
+  outside gp. The second form also survives a crash mid-run.
 
 ## Reading return values
 

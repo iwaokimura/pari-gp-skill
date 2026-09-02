@@ -5,6 +5,8 @@ of recurring PARI/GP scripting pitfalls: `.gp` script-file parsing rules that
 don't apply in the interactive REPL, a stack-size setting that silently kills a
 whole run when placed inside a function or inside a `read()` file, a
 `bnfisprincipal` placeholder generator that arrives with only a warning,
+`Map` and `List` arguments passed by value so that a `mapput`/`listput` inside
+a function vanishes without a word,
 semantic traps (`subst` vs `substvec`,
 `ffgen`, `my()`/closures, variable priority in `nffactor`), a `vecsum` type
 trap, `~` being transpose and not bitwise NOT, a place where exactness silently
