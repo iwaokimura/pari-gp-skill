@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -53,6 +53,28 @@ re-check it when a script's output looks wrong but produces no error.
   ```
   (Bit us the first time a script was parametrised through a wrapper file —
   see *Invocation* below.)
+- **A script that works here can die on a fresh machine because of
+  `~/.gprc`.** gp reads `~/.gprc` at start-up, and a development machine's
+  gprc often sets a huge stack (`parisize`, `parisizemax`). A stock install
+  has `parisize` = 8 MB and `parisizemax` = 0, so the stack cannot grow:
+  reading a large file (`readvec`, `readstr`, `read`) or any big intermediate
+  object fails with `the PARI stack overflows` and the hint `set
+  'parisizemax' to a nonzero value in your GPRC`, then `... skipping file`,
+  **exit code 0**. Verified with Ubuntu's gp 2.15.4: `readvec` of a 2·10^6-line
+  file fails under the defaults, and works with the developer's gprc. It
+  first showed up when a script tested at home was run on another
+  workstation.
+  **Reproduce the clean environment with `gp -f`** (do not read `~/.gprc`),
+  and **give the stack on the command line** for anything that will run
+  elsewhere, so it is set before the script starts and needs no
+  `default(...)` inside the file:
+  ```
+  gp -q -f -D parisize=2000000000 -D parisizemax=16000000000 script.gp < /dev/null
+  ```
+  `-D parisizemax=...` alone is enough for the stack to grow on demand (gp
+  prints `Warning: increasing stack size`). Test a script for another
+  machine once with `-f` before shipping it, and check for the gate line as
+  usual, since the failure still exits 0.
 
 ## Block syntax in script files (not the interactive REPL)
 
