@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, `write()` appending rather than truncating so that a script is not idempotent (use `fileopen`/`filewrite`/`fileclose`), floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -173,7 +173,9 @@ In a script **file**, all of the following are real, repeat-offender traps:
 - **Don't guess a compound return value's component order — look it up.**
   `?funcname` prints a one-line summary from the shell; `??funcname` prints
   the full manual entry with a worked example, non-interactively:
-  `echo "??elltors" | gp -q`.
+  `echo "??elltors" | gp -q`. The same applies to a function's **side
+  effects**, not only its return value — see *Writing output files* below,
+  where `??write` states both the trap and its remedy and neither was read.
 - **Concrete case that actually bit us**: `elltors(E)` returns `[t, v1, v2]`
   — `t` (component `[1]`) is the torsion group's **order**, `v1`
   (component `[2]`) is its **structure** as a product of cyclic groups.
@@ -195,6 +197,50 @@ In a script **file**, all of the following are real, repeat-offender traps:
   placeholders** (`type(t) != "t_COL" || t == 0*t`) so a drop is fatal rather
   than silent. More generally: when a script redirects stderr to a file, read
   that file before believing the stdout.
+
+## Writing output files
+
+- **`write(filename, ...)` APPENDS. It never truncates.** `??write` says so
+  in its first line — "Writes (appends) to filename the remaining arguments"
+  — and names the remedy in the same entry: "The low-level interface
+  `fileopen` / `filewrite` / `fileclose` is more efficient. It **also allows
+  to truncate existing files and replace their contents**."
+  Symptom: a script that ends by dumping its results with `write()` is not
+  idempotent. Every run adds another copy of the whole block, silently, with
+  no error. Measured case: a script writing six large assignments had run
+  four times over eighteen rounds, and its committed output file was four
+  identical copies, 1.98 MB where 397 kB was the content. Nothing was ever
+  *wrong* — a consumer `read()`s the file and the last assignment wins — but
+  the file grows without bound, and any regression runner that re-runs the
+  script **dirties the working tree on every run**, so `git status` can no
+  longer be used to tell whether anything really changed.
+- **Fix: `fileopen(path, "w")` / `filewrite(fd, s)` / `fileclose(fd)`.**
+  Mode `"w"` discards existing content, `"a"` appends (which is what `write`
+  does). `filewrite` takes a **string**, so build the line with `Str(...)`
+  where `write` took a comma-separated list:
+
+  ```
+  \\ before: appends, not idempotent
+  write(F, "E1 = ", e1, ";");
+  write(F, "E2 = ", e2, ";");
+  \\ after: truncates, byte-identical on a re-run
+  fd = fileopen(F, "w");
+  filewrite(fd, Str("E1 = ", e1, ";"));
+  filewrite(fd, Str("E2 = ", e2, ";"));
+  fileclose(fd);
+  ```
+
+  `filewrite` appends the newline, like `write`; `filewrite1` omits it. The
+  content is not guaranteed on disk until `fileclose` (automatic on quitting
+  gp), so close it explicitly in a script that others will `read()`.
+- **Make the output path a guarded global** so a wrapper or a runner can
+  redirect or suppress it, in the same idiom as the other parameters
+  (*Invocation* below):
+  `if(type(OUTFILE) != "t_STR", OUTFILE = "default_name.txt");` and then
+  `if(OUTFILE != "", ...)` around the write block.
+- **The general rule:** after a script's first run, run it a second time and
+  check `git status` is clean. A script whose committed artifacts change on
+  a no-op re-run cannot be used in a regression test.
 
 ## Type traps
 
