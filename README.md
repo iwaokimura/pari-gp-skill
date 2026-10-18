@@ -12,7 +12,8 @@ semantic traps (`subst` vs `substvec`,
 trap, `~` being transpose and not bitwise NOT, a place where exactness silently
 leaks into floating point, and errors of every kind -- syntax, arity, runtime --
 making gp skip the whole file and still exit 0 (with `gp2c` as the lint that
-catches the static half). Also documents the Claude Code convention
+catches the static half), and gp reading a script incrementally, so that
+editing it mid-run re-executes it from a stale offset. Also documents the Claude Code convention
 of creating `.gp` files with the Write tool rather than shell heredoc.
 
 Every item here was hit more than once, in independent sessions, while

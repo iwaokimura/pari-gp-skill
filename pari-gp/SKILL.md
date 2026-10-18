@@ -339,6 +339,26 @@ In a script **file**, all of the following are real, repeat-offender traps:
   output is not block-buffered when redirected, so the fix above is
   sufficient for gp. (SageMath has a related but different, genuinely
   Python-specific issue — see the separate `sagemath` skill.)
+- **Never edit a `.gp` file while gp is running it — not even a comment.**
+  gp reads a script file *incrementally*. It does not parse the whole file
+  first: it reads up to the statement it executes, runs it, then reads on from
+  the byte offset where it stopped. If the file changes underneath it, gp
+  resumes at that stale offset in the *new* text.
+  In a project gate, one header comment line was added during a 160 s
+  `run();`. After `run()` returned, gp parsed a fragment (`not a function in
+  function call`, `unexpected closing brace`, `... skipping file`). It then
+  hit the trailing `run();` again and **executed the whole gate a second
+  time**. Both executions printed GREEN, and **the exit code was 0**, so
+  neither channel showed that anything had happened. Only reading the log did.
+  Reproduced on gp 2.17.4 (`gp -q -f`) with a minimal script: an 8 s
+  `run();`, with one comment line inserted after 0.5 s, printed its output
+  twice, separated by `run-away string` and `unexpected closing brace`, and
+  exited 0.
+  What gets executed depends on where the stale offset lands, so a less lucky
+  edit could run a half-parsed statement silently. **Finish editing before
+  launching.** If an edit cannot wait, run a copy (`cp s.gp /tmp/s-run.gp`),
+  or rerun afterwards and cite only the clean run. An in-place edit by a tool
+  (Write/Edit, `sed -i`, a Python rewrite) counts as such a change.
 
 ## gp2c beyond linting
 
