@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, `write()` appending rather than truncating so that a script is not idempotent (use `fileopen`/`filewrite`/`fileclose`), floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp skip the file and still exit 0 (lint with `gp2c` first) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, `write()` appending rather than truncating so that a script is not idempotent (use `fileopen`/`filewrite`/`fileclose`), floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp drop the failing top-level statement, print "skipping file", carry on with the NEXT statement and still exit 0, so a gate line can say GREEN over checks that never ran, and the tail of a broken multi-line statement can run on its own (lint with `gp2c` first; grep logs for `skipping file`) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -287,15 +287,76 @@ In a script **file**, all of the following are real, repeat-offender traps:
   closed.** After the script finishes, gp drops to an interactive prompt
   and waits for more input. For any non-interactive or backgrounded
   invocation, close stdin explicitly: `gp -q script.gp < /dev/null`.
-- **ANY error aborts the script and gp still exits 0** — syntax, arity and
-  runtime errors alike. gp prints the error, then `... skipping file 'x.gp'`,
-  and stops; with the house style above (one `run();` on the last line) a
-  syntax error additionally reports `*** not a function in function call`,
-  because the driver was never defined. **The exit status is 0 in every case.**
-  So the exit code alone cannot tell "every gate passed" from "the file died
-  halfway" — a runner must *also* require the gate line in the output. (Same
-  shape as the `parisize` trap above, but general.) gp prints no line number
-  either. Measured on four one-line scripts:
+- **ANY error makes gp drop that top-level statement — and then carry on — and
+  gp still exits 0.** Syntax, arity and runtime errors alike. gp prints the
+  error, then `... skipping file 'x.gp'`. Despite that message, **it does not
+  skip the file**: it abandons only the top-level statement that failed and
+  goes on reading and executing the *next* one. **The exit status is 0 in every
+  case.** No line number is printed either, only a whitespace-squashed
+  fragment of the statement.
+
+  Measured on gp 2.15.4 and 2.17.4, with the same result on both. In each
+  script, `print("A")` came first, then the faulty statement, then
+  `print("C")`. Every case printed `C`:
+
+  | the faulty statement | printed | exit |
+  |---|---|---|
+  | `print("B"));` (one `)` too many) | A, C | 0 |
+  | a multi-line top-level `printf(...,` without `{ }` | A, C | 0 |
+  | `x = 1/0;` | A, C | 0 |
+  | `f(1,2)` for a one-argument `f` | A, C | 0 |
+  | `run();` whose body divides by zero | A, C (the rest of `run` lost) | 0 |
+  | a syntax error inside `run() = {...}`, then `run();` | C (plus `not a function in function call`) | 0 |
+
+  **How the file reaches gp matters, but only in one case.** The behaviour
+  above is the same whether the script is given on the command line
+  (`gp -q x.gp < /dev/null`), piped on standard input (`gp -q < x.gp`), or
+  loaded with `\r x.gp`. All three run the file **statement by statement as
+  the top level**, so an error costs one statement.
+  **`read("x.gp")` is different.** It is a single function call, so the first
+  error aborts the call, and with it the rest of `x.gp`, which is never
+  executed. The *calling* statement is abandoned too, and the outer file then
+  goes on with its next statement. Measured on both versions with a wrapper
+  `print("W1"); read("x.gp"); print("W2");`, one statement per line. It printed
+  `W1`, the part of `x.gp` before the error, and `W2`. The message names the
+  *outer* file: `... skipping file 'wrapper.gp'`. Exit code 0.
+  In that case the inner file really is cut short. With `read("x.gp"); print("AFTER")`
+  on one line, `AFTER` is lost as well. The multi-line fragment trap below
+  does not arise under `read()`: the `if(0, …quit(1)…)` file printed only `A`
+  and exited 0. So a script tested through a wrapper and the same script run
+  directly can fail differently.
+
+  Three consequences of the top-level behaviour, all seen in a real project:
+  - **A GREEN gate line proves nothing.** The gate printed at the end runs
+    normally, so it reports GREEN over checks that never ran. Three scripts
+    went two months like that, through every full run. One stray `)` deleted a
+    whole table and its check; two multi-line top-level statements without
+    `{ }` deleted a check and a guard. With the house style (everything inside
+    `run()`, one `run();` last), an error inside `run` loses the rest of `run`,
+    which *looks* like "the file stopped". A top-level statement after `run();`,
+    such as a gate line, still runs.
+  - **The tail of a broken multi-line statement can run on its own, out of
+    context.** A top-level multi-line statement without `{ }` is split at the
+    line breaks, and each piece that parses alone is executed. Measured:
+    ```
+    if(0,
+      print("never");
+      quit(1);
+    );
+    ```
+    prints `never` and **exits 1**: the first line is a syntax error and is
+    dropped, the body then runs unconditionally, and only the final `);` is
+    dropped again. A guard of the form `if(bad, print("FATAL"); quit(1));`
+    spread over lines is inert, or fires unconditionally, depending on where the closing
+    parenthesis falls.
+  - **A runner must grep for `skipping file` and `syntax error`**, not only
+    for `at top-level` (which runtime errors print) or for the gate line. Read
+    the log as text (`grep -a`): a log containing PARI's output can look
+    binary to grep.
+
+  The exit code cannot tell "every gate passed" from "half the file was
+  dropped". Lint with `gp2c` first (next item), and check the log. The same
+  four kinds of error against `gp2c`:
 
   | the script contains | gp exit | `... skipping file` | `gp2c` |
   |---|---|---|---|

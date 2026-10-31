@@ -11,8 +11,9 @@ semantic traps (`subst` vs `substvec`,
 `ffgen`, `my()`/closures, variable priority in `nffactor`), a `vecsum` type
 trap, `~` being transpose and not bitwise NOT, a place where exactness silently
 leaks into floating point, and errors of every kind -- syntax, arity, runtime --
-making gp skip the whole file and still exit 0 (with `gp2c` as the lint that
-catches the static half), and gp reading a script incrementally, so that
+making gp drop the failing statement, carry on with the next one and still
+exit 0, so a gate can say GREEN over checks that never ran (with `gp2c` as the
+lint that catches the static half, and `skipping file` as the line to grep for), and gp reading a script incrementally, so that
 editing it mid-run re-executes it from a stale offset. Also documents the Claude Code convention
 of creating `.gp` files with the Write tool rather than shell heredoc.
 
