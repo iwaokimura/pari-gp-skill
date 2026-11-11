@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, `write()` appending rather than truncating so that a script is not idempotent (use `fileopen`/`filewrite`/`fileclose`), floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp drop the failing top-level statement, print "skipping file", carry on with the NEXT statement and still exit 0, so a gate line can say GREEN over checks that never ran, and the tail of a broken multi-line statement can run on its own (lint with `gp2c` first; grep logs for `skipping file`) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), worker threads of a multithreaded build overflowing their own 8 MB stack inside library functions even without any `par*` call (`parisizemax` does not cover them; set `-D threadsizemax`), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, `write()` appending rather than truncating so that a script is not idempotent (use `fileopen`/`filewrite`/`fileclose`), floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp drop the failing top-level statement, print "skipping file", carry on with the NEXT statement and still exit 0, so a gate line can say GREEN over checks that never ran, and the tail of a broken multi-line statement can run on its own (lint with `gp2c` first; grep logs for `skipping file`) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -75,6 +75,31 @@ re-check it when a script's output looks wrong but produces no error.
   prints `Warning: increasing stack size`). Test a script for another
   machine once with `-f` before shipping it, and check for the gate line as
   usual, since the failure still exits 0.
+- **Threads have their own stack, and `parisizemax` does not cover it.**
+  A multithreaded gp build (gp 2.17.4 here; the debug output shows
+  `starting 12 threads`) parallelises *inside library functions* even when
+  the script never calls `parfor`/`parapply`/`parvector`. Each worker thread
+  gets a separate stack of size `threadsize`. Under `gp -f` that is 8 MB, and
+  `threadsizemax` = 0, so the thread stack cannot grow. `-D parisizemax=...`
+  only lets the main stack grow; it does nothing for the threads. Measured
+  failure: a long number-field run (small-degree `bnfinit`, `rnfisnorm` and
+  ideal arithmetic, called hundreds of times) went fine for about 30 minutes,
+  then died inside `idealadd` with
+  ```
+  *** idealadd: the thread stack overflows !
+  current stack size: 8000000 (7.629 Mbytes)
+  [hint] set 'threadsizemax' to a nonzero value in your GPRC
+  ... skipping file 'script.gp'
+  ```
+  with **exit code 0** and no gate line. It depends on the data, so Tier 1
+  and Tier 2 runs and the RED test all passed beforehand. Give the thread
+  stack on the command line together with the main one:
+  ```
+  gp -q -f -D parisizemax=8000000000 -D threadsizemax=2000000000 script.gp < /dev/null
+  ```
+  For long runs, grep the log for `thread stack overflows` as well as
+  `skipping file`. `-D nbthreads=1` (no worker threads) should also avoid it,
+  but that has not been tried here.
 
 ## Block syntax in script files (not the interactive REPL)
 
