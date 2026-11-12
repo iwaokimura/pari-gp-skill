@@ -11,7 +11,9 @@ semantic traps (`subst` vs `substvec`,
 `ffgen`, `my()`/closures, variable priority in `nffactor`), a `vecsum` type
 trap, worker threads of a multithreaded build overflowing their own small
 stack inside library functions (`parisizemax` does not cover them; set
-`threadsizemax`), `~` being transpose and not bitwise NOT, a place where exactness silently
+`threadsizemax`), `nfinit`/`bnfinit`/`nfroots(T, .)` factoring a huge
+discriminant for hours (use `nfinit([T, listP])`; test squares without
+`nfroots`), `~` being transpose and not bitwise NOT, a place where exactness silently
 leaks into floating point, and errors of every kind -- syntax, arity, runtime --
 making gp drop the failing statement, carry on with the next one and still
 exit 0, so a gate can say GREEN over checks that never ran (with `gp2c` as the

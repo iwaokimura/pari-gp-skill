@@ -1,6 +1,6 @@
 ---
 name: pari-gp
-description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), worker threads of a multithreaded build overflowing their own 8 MB stack inside library functions even without any `par*` call (`parisizemax` does not cover them; set `-D threadsizemax`), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, `write()` appending rather than truncating so that a script is not idempotent (use `fileopen`/`filewrite`/`fileclose`), floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp drop the failing top-level statement, print "skipping file", carry on with the NEXT statement and still exit 0, so a gate line can say GREEN over checks that never ran, and the tail of a broken multi-line statement can run on its own (lint with `gp2c` first; grep logs for `skipping file`) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
+description: Use before writing, editing, or debugging a PARI/GP (.gp) script, or before running one with gp. Covers recurring gp-specific footguns -- script-file parsing rules for `{ }` blocks, setting `parisize` inside a function or inside a `read()` file (which kills the run silently), a stock install's 8 MB stack overflowing where `~/.gprc` hid it (test with `gp -f`, set the stack with `-D` on the command line), worker threads of a multithreaded build overflowing their own 8 MB stack inside library functions even without any `par*` call (`parisizemax` does not cover them; set `-D threadsizemax`), `nfinit`/`bnfinit`/`nfroots(T, .)` with a bare polynomial factoring a huge discriminant for hours (use `nfinit([T, listP])`, and test squares by a non-residue witness or by the reducibility of `charpoly(a)(x^2)` instead of `nfroots`), `bnfisprincipal` returning a placeholder generator with only a warning, `Map`/`List` arguments being passed by value so that `mapput`/`listput` inside a function is silently lost, `subst` vs `substvec`, `ffgen` semantics, `my()`/closures, variable priority in `nffactor`, a `vecsum` type trap, `~` being transpose and not bitwise NOT, `write()` appending rather than truncating so that a script is not idempotent (use `fileopen`/`filewrite`/`fileclose`), floating-point leaking into exact computations, and errors of every kind -- syntax, arity, runtime -- making gp drop the failing top-level statement, print "skipping file", carry on with the NEXT statement and still exit 0, so a gate line can say GREEN over checks that never ran, and the tail of a broken multi-line statement can run on its own (lint with `gp2c` first; grep logs for `skipping file`) -- and the Claude Code convention of creating .gp files with the Write tool rather than shell heredoc.
 ---
 
 # PARI/GP scripting: recurring pitfalls
@@ -192,6 +192,45 @@ In a script **file**, all of the following are real, repeat-offender traps:
   return the counts up the call chain, or — usually simpler and more robust —
   have the inner function `print` one line per object and do the aggregation
   outside gp. The second form also survives a crash mid-run.
+
+## Number fields with huge discriminants
+
+- **`nfinit(T)` / `bnfinit(T)` factor `disc(T)`, and so can run for hours.**
+  A defining polynomial built by `rnfequation` or `polcompositum` from
+  elements with large coefficients has a discriminant of hundreds of digits
+  with a large index, and its factorisation is what never finishes. The fix
+  is `nfinit([T, listP])` (`listP` a vector of primes, or a bound `B` for all
+  primes `< B`): the order is made maximal only at those primes, and no full
+  factorisation is attempted. Measured: a degree-8 `T` with a 283-digit
+  discriminant, `nfinit([T, plist])` with the ramified primes took 11 ms.
+- **The same trap is hidden in functions that accept a bare polynomial for
+  the field:** `nfroots(T, f)`, `nffactor(T, f)` and similar build what they
+  need from `T` internally. Measured on that `T`: `nfroots(T, x^2 - a)` inside
+  a loop made one case take 8928 s (2.5 h, where most other cases
+  took seconds to minutes), and the process looked hung, with only `nfroots:
+  Warning: increasing stack size` in the log. Pass an `nf` instead, or avoid
+  the call.
+- **Caveat: a conditional `nf` is not guaranteed maximal**, and `??nfroots`
+  warns that `nfroots` over such an `nf` may *miss* a factor. A root it
+  returns is a root, but "no root" is not a proof. Either certify with
+  `nfcertify(nf)` (may itself be slow), or treat "no root" as an error and get
+  the negative answer some other way. (`bnfinit` on a conditional `nf` is
+  likewise conditional; not tested here.)
+- **For a square test, do not compute a square root at all.** Both
+  `nfroots` variants were slow on an element with 83-digit coefficients (8.6 s
+  without a root, 91 s with one). Faster and exact:
+  1. *Non-square witness*: at primes `l` where `T` splits into distinct
+     linear factors mod `l` (`#polrootsmod(T, l) == poldegree(T)`, so `l`
+     does not divide `disc(T)`), reduce `a` at a root and take `kronecker`.
+     One non-residue proves `a` is not a square (0.01 s).
+  2. If all are residues and `P = charpoly(Mod(a, T))` is squarefree, then
+     `a` generates the field, and `a` is a square **iff `P(x^2)` is
+     reducible over Q** (`polisirreducible(subst(P, x, x^2))`), since
+     `sqrt(a)` has degree `n` or `2n`. This took 12 s against 91 s.
+- **Watch for it:** a long job that stops printing on one case, with only
+  `increasing stack size` warnings from `nfroots`/`nfinit`, while other cases
+  take seconds. Locate the stalling line with timestamped `print`s, because
+  `gdb -p` is usually blocked (`ptrace_scope = 1`).
 
 ## Reading return values
 
